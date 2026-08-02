@@ -240,8 +240,7 @@ def cmd_mint_block(args):
 
 def cmd_verify_block(args):
     """
-    Verify Block k against Block k-1 (or verify Block k+1 against Block k):
-    Block k+1's `previous_nonce` is the missing `nonce_hash_k` that proves Block k's `block_hash`!
+    Verify block verification using formula: H(Data + Nonce) = BLOCK_HASH
     """
     filepath = args.file
     if not os.path.exists(filepath):
@@ -270,32 +269,34 @@ def cmd_verify_block(args):
     print("=" * 80)
     print(f"  Data                 : '{block.get('data')}'")
     print(f"  Previous Nonce       : {block.get('previous_nonce', '0x0')[:32]}...")
-    print(f"  Block Hash           : {block.get('block_hash')[:32]}...")
+    print(f"  Block Hash           : {block.get('block_hash')[:32]}...\n")
     
-    # If a previous block file (Block k-1) is provided, Block k's previous_nonce unlocks Block k-1's block_hash!
+    # If previous_file is provided, Block k (args.file) reveals the Nonce for Block k-1 (args.prev_file)
     if args.prev_file:
         if not os.path.exists(args.prev_file):
-            print(f"Error: Previous block file '{args.prev_file}' not found.")
+            print(f"Error: Target block file '{args.prev_file}' not found.")
             sys.exit(1)
             
         prev_block = parse_block_txt(args.prev_file) if not args.prev_file.endswith(".json") else json.load(open(args.prev_file))
-        print("\n" + "-" * 80)
-        print(f"VERIFYING LINK BETWEEN BLOCK #{prev_block.get('index')} AND BLOCK #{block.get('index')}")
-        print("-" * 80)
-        
-        revealed_nonce_for_prev = block.get('previous_nonce')
         prev_data = prev_block.get('data', '')
+        revealed_nonce = block.get('previous_nonce', '')
+        target_block_hash = prev_block.get('block_hash', '')
         
-        # Verify prev_block.block_hash == SHA-512(prev_data + revealed_nonce_for_prev)
-        calc_prev_block_hash = compute_block_hash(prev_data, revealed_nonce_for_prev)
+        calc_hash = compute_block_hash(prev_data, revealed_nonce)
         
-        if calc_prev_block_hash == prev_block.get('block_hash'):
-            print("  Chain Link & Nonce Revelation Verification: Block k's previous_nonce VALIDATES Block k-1's block_hash! ✅")
+        print(f"VERIFYING BLOCK #{prev_block.get('index', 0)} VIA REVEALED NONCE IN BLOCK #{block.get('index', 0)}:")
+        print("  H(Data + Nonce) = BLOCK_HASH")
+        print(f"  H('{prev_data}' + {revealed_nonce[:16]}...) = {target_block_hash[:32]}...")
+        
+        if calc_hash == target_block_hash:
+            print("\n✅ RESULT: H(Data + Nonce) = BLOCK_HASH (VALID)")
         else:
-            print("  ❌ Verification Failed: Block k's previous_nonce DOES NOT match Block k-1's block_hash commitment!")
+            print(f"\n❌ RESULT: INVALID! Calculated {calc_hash[:32]}... != {target_block_hash[:32]}...")
             sys.exit(1)
+    else:
+        print("  Formula: H(Data + Nonce) = BLOCK_HASH")
+        print("  Note: Provide the subsequent block (-p / --prev-file) which reveals the Nonce to verify this block's hash.")
 
-    print("\n✅ RESULT: BLOCK STRUCTURE & REVELATION VALID!")
 
 
 def cmd_parse_block(args):
