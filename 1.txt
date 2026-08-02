@@ -1,0 +1,7 @@
+================================================================================
+BLOCK_INDEX        : 0
+DATA               : Genesis Block
+PREVIOUS_NONCE     : 0x0
+BLOCK_HASH         : 571cecde72bd1cda0a810b9d7e260e9754d39a56e0b5a1693a9a3057fd4d996c60b0925fd0a5355a51f46693ca9eb42aa9ab153ad311631b2e390428e679bbda
+TIME_TO_KNOW_NONCE : 18.71 µs (INSTANT)
+================================================================================

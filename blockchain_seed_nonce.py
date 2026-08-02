@@ -2,11 +2,12 @@
 Single-Hash Deterministic Blockchain Identity Scheme.
 
 Model:
-- PRNG number N_k is PRIVATE.
+- PRNG number N_k is PRIVATE until final settlement block.
 - Single Hash: nonce_hash = SHA-512(N_k)
 - block_hash = SHA-512(current_data + nonce_hash)
 - `nonce_hash` is NOT written in Block k! It only appears in Block k+1 as `previous_nonce`.
-- Block k contains only: index, data, previous_nonce, block_hash.
+- Block k contains: index, data, previous_nonce, block_hash.
+- Final Block reveals `revealed_seed` and `prng_algorithm` for 100% full retrospective auditability.
 """
 
 import hashlib
@@ -42,10 +43,19 @@ def format_block_txt_str(block: dict) -> str:
         f"BLOCK_INDEX        : {block['index']}",
         f"DATA               : {block['data']}",
         f"PREVIOUS_NONCE     : {block['previous_nonce']}",
-        f"BLOCK_HASH         : {block['block_hash']}",
+        f"BLOCK_HASH         : {block['block_hash']}"
+    ]
+    if "revealed_seed" in block:
+        lines.append(f"REVEALED_SEED      : {block['revealed_seed']}")
+    if "prng_algorithm" in block:
+        lines.append(f"PRNG_ALGORITHM     : {block['prng_algorithm']}")
+    if "is_final" in block:
+        lines.append(f"IS_FINAL           : {block['is_final']}")
+        
+    lines.extend([
         f"TIME_TO_KNOW_NONCE : {block.get('time_to_know_nonce', 'INSTANT')}",
         "================================================================================"
-    ]
+    ])
     return "\n".join(lines) + "\n"
 
 
@@ -75,6 +85,12 @@ def parse_block_txt(filepath: str) -> dict:
                     block["previous_nonce"] = val
                 elif key == "block_hash":
                     block["block_hash"] = val
+                elif key == "revealed_seed" or key == "secret_seed":
+                    block["revealed_seed"] = val
+                elif key == "prng_algorithm" or key == "algorithm":
+                    block["prng_algorithm"] = val
+                elif key == "is_final":
+                    block["is_final"] = (val.lower() == "true")
                 elif key == "time_to_know_nonce":
                     block["time_to_know_nonce"] = val
     return block

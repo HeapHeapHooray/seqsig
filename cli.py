@@ -6,7 +6,8 @@ Model:
 - Single Hash: nonce_hash = SHA-512(N_k)
 - block_hash = SHA-512(current_data + nonce_hash)
 - `nonce_hash` is NOT written in Block k! It only appears in Block k+1 as `previous_nonce`.
-- Block k contains only: index, data, previous_nonce, block_hash.
+- Block k contains: index, data, previous_nonce, block_hash.
+- Final Block reveals `revealed_seed` and `prng_algorithm` for 100% retrospective auditability.
 """
 
 import argparse
@@ -69,7 +70,6 @@ def load_seed_from_arg_or_file(seed_input: str) -> int:
     if os.path.exists(seed_input):
         with open(seed_input, "r", encoding="utf-8") as f:
             content = f.read().strip()
-            # If secret seed was saved inside JSON format
             if content.startswith("{"):
                 try:
                     data = json.loads(content)
@@ -108,7 +108,6 @@ def load_json_input(input_arg: str = None) -> dict:
 
     if raw_content:
         if raw_content.startswith("="):
-            # Parse text format from stdin
             lines = raw_content.splitlines()
             block = {}
             for line in lines:
@@ -125,6 +124,12 @@ def load_json_input(input_arg: str = None) -> dict:
                         block["previous_nonce"] = val
                     elif key == "block_hash":
                         block["block_hash"] = val
+                    elif key == "revealed_seed" or key == "secret_seed":
+                        block["revealed_seed"] = val
+                    elif key == "prng_algorithm":
+                        block["prng_algorithm"] = val
+                    elif key == "is_final":
+                        block["is_final"] = (val.lower() == "true")
             return block
         else:
             try:
@@ -155,7 +160,6 @@ def output_block(block: dict, json_out_path: str = None, txt_out_path: str = Non
             print(f"Saved JSON block to: {json_out_path}")
             
     if not txt_out_path and not json_out_path:
-        # Default stdout: print JSON
         print(json.dumps(block, indent=2))
 
 
@@ -238,7 +242,7 @@ def cmd_mint_block(args):
     seed_val = load_seed_from_arg_or_file(seed_arg)
     
     next_index = current_index + 1 if current_index >= 0 else 1
-    current_step = next_index - 1  # step k for revealing N_k in block k+1
+    current_step = next_index - 1
     
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
@@ -270,9 +274,82 @@ def cmd_mint_block(args):
     output_block(next_block, json_out_path=getattr(args, "out", None), txt_out_path=getattr(args, "txt_out", None))
 
 
+def cmd_final_block(args):
+    """
+    Mint the FINAL block (Block k+1) revealing the master secret seed and PRNG algorithm:
+    - Reveals `revealed_seed` and `prng_algorithm`.
+    - Sets `is_final: True`.
+    - Allows 100% full retrospective auditability for the entire chain.
+    """
+    input_data = load_json_input(args.json_file)
+    
+    seed_arg = None
+    new_data = None
+    current_index = -1
+    
+    if input_data:
+        if "index" in input_data:
+            current_index = input_data["index"]
+            
+        seed_arg = input_data.get("seed") or input_data.get("secret_seed")
+        new_data = input_data.get("next_data") or (input_data.get("data") if "index" not in input_data else None)
+        
+    if not seed_arg and getattr(args, "seed", None):
+        seed_arg = args.seed
+    if getattr(args, "data", None):
+        new_data = args.data
+    else:
+        if not new_data:
+            new_data = "Final Block - Seed & PRNG Algorithm Disclosed"
+
+    if not seed_arg:
+        print("Error: Missing required 512-bit master secret seed.")
+        print("Usage: ./cli.py final current_block.json -s <seed> -d <final_data>")
+        sys.exit(1)
+
+    seed_val = load_seed_from_arg_or_file(seed_arg)
+    seed_hex = hex(seed_val)
+    
+    next_index = current_index + 1 if current_index >= 0 else 1
+    current_step = next_index - 1
+    
+    start_time = time.perf_counter()
+    prng = CryptoPRNG512(seed_val)
+    
+    # 1. Advance PRNG to step k to compute previous_nonce = SHA-512(N_k)
+    for _ in range(current_step):
+        prng.next_bytes()
+        
+    raw_N_curr = prng.next_int()
+    previous_nonce_val = compute_nonce_hash(raw_N_curr)
+    
+    # 2. Advance PRNG to step k+1 to compute nonce_hash_{k+1} = SHA-512(N_{k+1})
+    raw_N_next = prng.next_int()
+    nonce_hash_next = compute_nonce_hash(raw_N_next)
+    
+    # 3. block_hash_{k+1} = SHA-512(new_data + nonce_hash_{k+1})
+    next_block_hash = compute_block_hash(new_data, nonce_hash_next)
+    
+    elapsed_us = (time.perf_counter() - start_time) * 1_000_000
+    
+    final_block = {
+        "index": next_index,
+        "data": new_data,
+        "previous_nonce": previous_nonce_val,
+        "revealed_seed": seed_hex,
+        "prng_algorithm": "CryptoPRNG512 (SHAKE-256)",
+        "is_final": True,
+        "block_hash": next_block_hash,
+        "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
+    }
+    
+    output_block(final_block, json_out_path=getattr(args, "out", None), txt_out_path=getattr(args, "txt_out", None))
+
+
 def cmd_verify_block(args):
     """
     Verify block verification using formula: H(Data + Nonce) = BLOCK_HASH
+    If block is FINAL (or contains revealed_seed), perform a Full Retrospective Seed Audit.
     """
     filepath = args.file
     if not os.path.exists(filepath):
@@ -303,6 +380,31 @@ def cmd_verify_block(args):
     print(f"  Previous Nonce       : {block.get('previous_nonce', '0x0')[:32]}...")
     print(f"  Block Hash           : {block.get('block_hash')[:32]}...\n")
     
+    # If block is final / contains revealed_seed, perform retrospective seed audit
+    if block.get("is_final") or "revealed_seed" in block:
+        print("=" * 80)
+        print("FINAL BLOCK DETECTED: RETROSPECTIVE SEED & PRNG AUDIT")
+        print("=" * 80)
+        seed_hex = block["revealed_seed"]
+        algo = block.get("prng_algorithm", "CryptoPRNG512 (SHAKE-256)")
+        print(f"  Revealed Master Seed : {seed_hex[:32]}...")
+        print(f"  PRNG Algorithm       : {algo}")
+        
+        seed_val = int(seed_hex, 16)
+        idx = block.get("index", 0)
+        audit_prng = CryptoPRNG512(seed_val)
+        
+        if idx > 0:
+            for _ in range(idx - 1):
+                audit_prng.next_bytes()
+            raw_prev_N = audit_prng.next_int()
+            calc_prev_nonce = compute_nonce_hash(raw_prev_N)
+            if calc_prev_nonce == block.get("previous_nonce"):
+                print("  Full Seed Derivation Audit: SHA-512(PRNG(seed, k-1)) MATCHES previous_nonce! ✅")
+            else:
+                print("  ❌ Seed Audit Failed! Revealed seed does not match block previous_nonce.")
+                sys.exit(1)
+
     # If prev_file is provided, Block k (args.file) reveals the Nonce for Block k-1 (args.prev_file)
     if args.prev_file:
         if not os.path.exists(args.prev_file):
@@ -316,7 +418,7 @@ def cmd_verify_block(args):
         
         calc_hash = compute_block_hash(prev_data, revealed_nonce)
         
-        print(f"VERIFYING BLOCK #{prev_block.get('index', 0)} VIA REVEALED NONCE IN BLOCK #{block.get('index', 0)}:")
+        print(f"\nVERIFYING BLOCK #{prev_block.get('index', 0)} VIA REVEALED NONCE IN BLOCK #{block.get('index', 0)}:")
         print("  H(Data + Nonce) = BLOCK_HASH")
         print(f"  H('{prev_data}' + {revealed_nonce[:16]}...) = {target_block_hash[:32]}...")
         
@@ -325,7 +427,7 @@ def cmd_verify_block(args):
         else:
             print(f"\n❌ RESULT: INVALID! Calculated {calc_hash[:32]}... != {target_block_hash[:32]}...")
             sys.exit(1)
-    else:
+    elif not block.get("is_final"):
         print("  Formula: H(Data + Nonce) = BLOCK_HASH")
         print("  Note: Provide the subsequent block (-p / --prev-file) which reveals the Nonce to verify this block's hash.")
 
@@ -428,6 +530,16 @@ def main():
     p_mint.add_argument("-o", "--out", help="Output JSON file path for NEW minted block")
     p_mint.add_argument("-t", "--txt-out", help="Output .txt file path or '-' for stdout text")
     p_mint.set_defaults(func=cmd_mint_block)
+    
+    # Command: final / finalize / close-chain
+    for name in ["final", "finalize", "close-chain"]:
+        p_final = subparsers.add_parser(name, help="Mint the FINAL block revealing secret seed and PRNG algorithm")
+        p_final.add_argument("json_file", nargs="?", default=None, help="Path to current block (.json/.txt) or '-' for stdin")
+        p_final.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
+        p_final.add_argument("-d", "--data", default="Final Block - Seed Disclosed", help="Final data message")
+        p_final.add_argument("-o", "--out", help="Output JSON file path for final block")
+        p_final.add_argument("-t", "--txt-out", help="Output .txt file path or '-' for stdout text")
+        p_final.set_defaults(func=cmd_final_block)
     
     # Command: verify
     p_verify = subparsers.add_parser("verify", help="Verify the integrity of a block file (.json or .txt)")
