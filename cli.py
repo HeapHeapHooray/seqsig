@@ -169,73 +169,80 @@ def cmd_genesis(args):
 
 def cmd_mint_block(args):
     """
-    Mint Block k:
-    - previous_nonce = nonce_hash_{k-1} (revealed SHA-512(N_{k-1}) from block k-1)
-    - block_hash = SHA-512(current_data + nonce_hash_k)
-    - nonce_hash_k is NOT written in Block k!
+    Mint the NEXT block (Block k+1) given the CURRENT block (Block k):
+    - Reads current block index k (from fed block.json or stdin). Next index = k + 1.
+    - Calculates `previous_nonce` for Block k+1 = SHA-512(N_k), revealing current block's nonce.
+    - Calculates `block_hash` for Block k+1 = SHA-512(new_data + SHA-512(N_{k+1})).
+    - Outputs the NEW NEXT BLOCK (Block k+1).
     """
-    block_json_data = load_json_input(args.json_file)
+    input_json = load_json_input(args.json_file)
     
     seed_arg = None
-    data_arg = None
-    block_index = 0
+    new_data = None
+    current_index = -1
     
-    if block_json_data:
-        seed_arg = block_json_data.get("seed") or block_json_data.get("secret_seed")
-        data_arg = block_json_data.get("data")
-        block_index = block_json_data.get("index", block_json_data.get("block_index", 0))
+    if input_json:
+        # Check if fed JSON is a block
+        if "index" in input_json:
+            current_index = input_json["index"]
+            
+        seed_arg = input_json.get("seed") or input_json.get("secret_seed")
+        # Check for new data fields
+        new_data = input_json.get("next_data") or (input_json.get("data") if "index" not in input_json else None)
         
     if not seed_arg and getattr(args, "seed", None):
         seed_arg = args.seed
-    if not data_arg and getattr(args, "data", None):
-        data_arg = args.data
+    if getattr(args, "data", None):
+        new_data = args.data
 
-    if not seed_arg or not data_arg:
-        print("Error: Missing required 'seed' or 'data' in block JSON or arguments.")
-        print("Expected block.json format: {\"seed\": \"<seed_or_key_file>\", \"data\": \"<transaction_data>\", \"index\": 1}")
+    if not seed_arg or not new_data:
+        print("Error: Missing required 'seed' or new block 'data'.")
+        print("Usage: ./cli.py mint current_block.json -s <seed> -d <new_data>")
         sys.exit(1)
 
     seed_val = load_seed_from_arg_or_file(seed_arg)
     
+    next_index = current_index + 1 if current_index >= 0 else 1
+    current_step = next_index - 1  # step k for revealing N_k in block k+1
+    
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # 1. previous_nonce is the nonce_hash of Block k-1: SHA-512(N_{k-1})
-    previous_nonce_val = "0x0"
-    if block_index > 0:
-        for _ in range(block_index - 1):
-            prng.next_bytes()
-        raw_prev_N = prng.next_int()
-        previous_nonce_val = compute_nonce_hash(raw_prev_N)
+    # 1. Advance PRNG to step k to compute previous_nonce = SHA-512(N_k)
+    for _ in range(current_step):
+        prng.next_bytes()
+        
+    raw_N_curr = prng.next_int()
+    previous_nonce_val = compute_nonce_hash(raw_N_curr)
     
-    # 2. Current block PRNG number N_k and nonce_hash_k (used for block_hash calculation)
-    raw_curr_N = prng.next_int()
-    nonce_hash_k = compute_nonce_hash(raw_curr_N)
+    # 2. Advance PRNG to step k+1 to compute nonce_hash_{k+1} = SHA-512(N_{k+1})
+    raw_N_next = prng.next_int()
+    nonce_hash_next = compute_nonce_hash(raw_N_next)
     
-    # 3. block_hash = SHA-512(current_data + nonce_hash_k)
-    block_hash = compute_block_hash(data_arg, nonce_hash_k)
+    # 3. block_hash_{k+1} = SHA-512(new_data + nonce_hash_{k+1})
+    next_block_hash = compute_block_hash(new_data, nonce_hash_next)
     
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
     
-    minted_block = {
-        "index": block_index,
-        "data": data_arg,
+    next_block = {
+        "index": next_index,
+        "data": new_data,
         "previous_nonce": previous_nonce_val,
-        "block_hash": block_hash,
+        "block_hash": next_block_hash,
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
     if args.txt_out:
-        save_block_to_txt(minted_block, args.txt_out)
-        print(f"Saved text block to: {args.txt_out}")
+        save_block_to_txt(next_block, args.txt_out)
+        print(f"Saved next block text to: {args.txt_out}")
         
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
-            json.dump(minted_block, f, indent=2)
+            json.dump(next_block, f, indent=2)
             f.write("\n")
-        print(f"Saved minted block JSON to: {args.out}")
+        print(f"Saved next block JSON to: {args.out}")
     elif not args.txt_out:
-        print(json.dumps(minted_block, indent=2))
+        print(json.dumps(next_block, indent=2))
 
 
 def cmd_verify_block(args):
@@ -271,7 +278,7 @@ def cmd_verify_block(args):
     print(f"  Previous Nonce       : {block.get('previous_nonce', '0x0')[:32]}...")
     print(f"  Block Hash           : {block.get('block_hash')[:32]}...\n")
     
-    # If previous_file is provided, Block k (args.file) reveals the Nonce for Block k-1 (args.prev_file)
+    # If prev_file is provided, Block k (args.file) reveals the Nonce for Block k-1 (args.prev_file)
     if args.prev_file:
         if not os.path.exists(args.prev_file):
             print(f"Error: Target block file '{args.prev_file}' not found.")
@@ -296,7 +303,6 @@ def cmd_verify_block(args):
     else:
         print("  Formula: H(Data + Nonce) = BLOCK_HASH")
         print("  Note: Provide the subsequent block (-p / --prev-file) which reveals the Nonce to verify this block's hash.")
-
 
 
 def cmd_parse_block(args):
@@ -397,12 +403,12 @@ def main():
         p_gen_b.set_defaults(func=cmd_genesis)
     
     # Command: mint
-    p_mint = subparsers.add_parser("mint", help="Mint a block from block.json input (file or stdin)")
-    p_mint.add_argument("json_file", nargs="?", default=None, help="Path to block.json file or '-' for stdin")
+    p_mint = subparsers.add_parser("mint", help="Mint next block by feeding current block (file or stdin)")
+    p_mint.add_argument("json_file", nargs="?", default=None, help="Path to current block.json file or '-' for stdin")
     p_mint.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
-    p_mint.add_argument("-d", "--data", help="Data / Transaction message for the block")
-    p_mint.add_argument("-o", "--out", help="Output JSON file path for minted block")
-    p_mint.add_argument("-t", "--txt-out", help="Output .txt file path for minted block")
+    p_mint.add_argument("-d", "--data", help="Data / Transaction message for the NEW block")
+    p_mint.add_argument("-o", "--out", help="Output JSON file path for NEW minted block")
+    p_mint.add_argument("-t", "--txt-out", help="Output .txt file path for NEW minted block")
     p_mint.set_defaults(func=cmd_mint_block)
     
     # Command: verify
