@@ -62,10 +62,55 @@ def load_seed_from_arg_or_file(seed_input: str) -> int:
         sys.exit(1)
 
 
+def load_json_input(input_arg: str = None) -> dict:
+    """Load JSON payload from file path or stdin."""
+    json_raw = None
+    if input_arg and input_arg != "-":
+        if os.path.exists(input_arg):
+            with open(input_arg, "r", encoding="utf-8") as f:
+                json_raw = f.read()
+        else:
+            json_raw = input_arg
+    else:
+        # Read from stdin if piped or input_arg is '-'
+        if not sys.stdin.isatty() or input_arg == "-":
+            json_raw = sys.stdin.read()
+
+    if json_raw:
+        try:
+            return json.loads(json_raw)
+        except Exception as e:
+            print(f"Error parsing JSON input: {e}")
+            sys.exit(1)
+    return None
+
+
 def cmd_mint_block(args):
-    """Mint a new block using the 512-bit master seed."""
-    seed_val = load_seed_from_arg_or_file(args.seed)
+    """Mint a new block using block.json input from file or stdin."""
+    block_json_data = load_json_input(args.json_file)
+    
+    seed_arg = None
+    data_arg = None
     ledger_path = args.ledger
+    block_dir = args.block_dir
+    
+    if block_json_data:
+        seed_arg = block_json_data.get("seed") or block_json_data.get("secret_seed")
+        data_arg = block_json_data.get("data")
+        ledger_path = block_json_data.get("ledger", ledger_path)
+        block_dir = block_json_data.get("block_dir", block_dir)
+        
+    if not seed_arg and getattr(args, "seed", None):
+        seed_arg = args.seed
+    if not data_arg and getattr(args, "data", None):
+        data_arg = args.data
+
+    if not seed_arg or not data_arg:
+        print("Error: Missing required 'seed' or 'data' in block JSON or arguments.")
+        print("Expected block.json format: {\"seed\": \"<seed_or_key_file>\", \"data\": \"<transaction_data>\"}")
+        sys.exit(1)
+
+    seed_val = load_seed_from_arg_or_file(seed_arg)
     
     # Load existing ledger blocks if file exists
     existing_blocks = []
@@ -84,13 +129,13 @@ def cmd_mint_block(args):
     nonce_curr = prng.next_int()
     h_curr = sha512_int(nonce_curr)
     
-    block_content = (prev_hash + args.data + h_curr.hex()).encode('utf-8')
+    block_content = (prev_hash + data_arg + h_curr.hex()).encode('utf-8')
     block_hash = sha512_bytes(block_content).hex()
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
     
     block = {
         "index": block_index,
-        "data": args.data,
+        "data": data_arg,
         "nonce_N_i": hex(nonce_curr),
         "nonce_hash_H_Ni": h_curr.hex(),
         "prev_hash": prev_hash,
@@ -101,8 +146,8 @@ def cmd_mint_block(args):
     existing_blocks.append(block)
     
     # Save individual block text file
-    os.makedirs(args.block_dir, exist_ok=True)
-    block_file = os.path.join(args.block_dir, f"block_{block_index}.txt")
+    os.makedirs(block_dir, exist_ok=True)
+    block_file = os.path.join(block_dir, f"block_{block_index}.txt")
     save_block_to_txt(block, block_file)
     
     # Update ledger file
@@ -273,9 +318,10 @@ def main():
     p_gen.set_defaults(func=cmd_gen_seed)
     
     # Command: mint
-    p_mint = subparsers.add_parser("mint", help="Mint a new block using the 512-bit secret seed")
-    p_mint.add_argument("-s", "--seed", required=True, help="512-bit secret seed (hex string or file path)")
-    p_mint.add_argument("-d", "--data", required=True, help="Data / Transaction message for the block")
+    p_mint = subparsers.add_parser("mint", help="Mint a new block using block.json input from file or stdin")
+    p_mint.add_argument("json_file", nargs="?", default=None, help="Path to block.json file or '-' for stdin")
+    p_mint.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
+    p_mint.add_argument("-d", "--data", help="Data / Transaction message for the block")
     p_mint.add_argument("-l", "--ledger", default="blockchain_ledger.txt", help="Path to ledger text file")
     p_mint.add_argument("-b", "--block-dir", default="blocks", help="Directory to save individual block .txt files")
     p_mint.set_defaults(func=cmd_mint_block)
