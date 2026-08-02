@@ -1,17 +1,11 @@
 """
-Blockchain Nonce Determinism & 2-Level Pre-Image Revelation Scheme via 512-Bit Master Seed.
+Single-Hash Deterministic Blockchain Identity Scheme.
 
-Security Model:
-- Raw PRNG numbers (N_k) are NEVER revealed publicly!
-- Level 1 Hash: H1(N_k) = SHA-512(N_k)
-  Revealed in Block k+1 as `previous_nonce` (a hash!).
-- Level 2 Hash: H2(N_k) = SHA-512(H1(N_k))
-  Committed in Block k as `nonce_hash`.
+Model:
+- PRNG number N_k is PRIVATE (never published).
+- Single Hash: nonce_hash = SHA-512(N_k)
 - Block Hash: block_hash = SHA-512(current_data + nonce_hash)
-
-Verification of Block k+1 against Block k:
-  SHA-512(Block_{k+1}.previous_nonce) == Block_k.nonce_hash
-  i.e. SHA-512( H1(N_k) ) == H2(N_k)
+- In Block k, `previous_nonce` is the `nonce_hash` of Block k-1!
 """
 
 import hashlib
@@ -30,14 +24,14 @@ def sha512_bytes(data: bytes) -> bytes:
     return hashlib.sha512(data).digest()
 
 
-def prng_level1_hash(prng_number: int) -> str:
-    """Level 1 Hash: H1(N_k) = SHA-512(N_k). Revealed in next block."""
+def compute_nonce_hash(prng_number: int) -> str:
+    """Single hash: SHA-512(N_k)."""
     return sha512_int(prng_number).hex()
 
 
-def prng_level2_hash(level1_hex: str) -> str:
-    """Level 2 Hash: H2(N_k) = SHA-512(H1(N_k)). Committed in current block as nonce_hash."""
-    return sha512_bytes(level1_hex.encode('utf-8')).hex()
+def compute_block_hash(data: str, nonce_hash: str) -> str:
+    """block_hash = SHA-512(current_data + nonce_hash)"""
+    return sha512_bytes((data + nonce_hash).encode('utf-8')).hex()
 
 
 def save_block_to_txt(block: dict, filepath: str):
