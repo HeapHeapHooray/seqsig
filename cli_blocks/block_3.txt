@@ -1,9 +1,0 @@
-================================================================================
-BLOCK_INDEX        : 3
-DATA               : Minting via block.json input test
-PREV_HASH          : 2f5daa7a18bdf83ec57db3d4a7d0744752e00db510b2a9077c2d41646018229cfd7f7803699d4efad7e2c3842ce9aa8b5bde35ae9a09441dccc1e89a9b18271b
-NONCE_N_I          : 0x628cacbbf07073875b0191e53a782991a057774e38a40b9793193523d18a5c402d10257133768d58ef2dfd4a8d91d4392c95f5adbd9a24a5dc9f79875d5f8f02
-NONCE_HASH_H_NI    : e742c1660c7aa0f4b725502809f9bdd9bf02c9a697951b3c745cc89e7880dc89256ca9cbd03c2c1bf2d41dbeb7651eb6f9d226983037626231ee1344be77cd30
-BLOCK_HASH         : babbca91d3a697f602f794981fc6ee2d37128f8d64f1333e8e12b052fde176028efd7f3ce5180a162916332b8fd1c17b197ea2d3b01a1d35ae6cd7a9ab7a274a
-TIME_TO_KNOW_NONCE : 8.06 µs (INSTANT)
-================================================================================

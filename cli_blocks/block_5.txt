@@ -1,9 +1,0 @@
-================================================================================
-BLOCK_INDEX        : 5
-DATA               : Piped JSON test
-PREV_HASH          : 630a70bd696f0d2b1b72023b7a046cd8308dc0b3cf775ed2c5aee5bba213625f810ba5a8f0df4efc1d8e3dcc9faa60f69948dd02819121a9c46eaedbe4cc90e3
-NONCE_N_I          : 0x31023645d51b09c13fe17561b497c52f94a0509bb598d9cae6065ac2f34a605a035cd25989d85cb55b487fd54804b00a23743928634ce93046fd8cddb6123b2d
-NONCE_HASH_H_NI    : 0704e282f375b0487db98a497aba34e8bbfcfd58827bffdd55e0575a72f9fa2d9971f99643e9a9a2670e74bee9601314679b42d5188406b0f6c0c34ffd5740af
-BLOCK_HASH         : ef36a29852c49a92124f33b63dcc47b83679e1e4e76fd6295cdf5d62b21224823378845abd789ac76a87648bf68de4aa5ae3deda4e9f66dd5167e34ea7d67eef
-TIME_TO_KNOW_NONCE : 8.48 µs (INSTANT)
-================================================================================

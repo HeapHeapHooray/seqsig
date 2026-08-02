@@ -1,9 +1,0 @@
-================================================================================
-BLOCK_INDEX        : 1
-DATA               : Block #1: Transfer 100 Tokens to Alice
-PREV_HASH          : aca157cce293a03de790c4970d42b4953b60c0d1652ddefd8b9c4afdcb87d83808dd2b313db1bf92d8512cda93867259c308a4db289264e599490e590ef545ce
-NONCE_N_I          : 0x80e2972474a0976e628d0ab5656b3869f4af1435e4d40bbb16bf53f8263f758f3cd3518991914aea90581f4a1012d08a0ccd2a21f944687eafabc0613ceb97a0
-NONCE_HASH_H_NI    : 13bb5776ff1be31bf924dd33a4273a0340f91c6eafc4be606878b265da482bdb87cbb5dd77ebd9216909e95e5b89060a0141fd2d05353042e31502997d69816c
-BLOCK_HASH         : d22d3eaad138295ddd088798cc02952e89af9de086baa9c4f2980a86a1de2a5bdbee9c7a60d46e689e180a189c5142f522ac752c551ee91b6b1c14e4f80b2142
-TIME_TO_KNOW_NONCE : 8.19 µs (INSTANT)
-================================================================================

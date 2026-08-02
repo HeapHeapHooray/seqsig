@@ -1,9 +1,0 @@
-================================================================================
-BLOCK_INDEX        : 1
-DATA               : Tx 2: Transfer 50 coins to Bob
-PREV_HASH          : 41a863b469b9a226d6e10c7a80b93ffe17502ab78faa262a5b3d13cc89806442530402d08838ecffa9415ff2d47f301b90f4daf114ff29d16c017b6c1ccf3fff
-NONCE_N_I          : 0x849b6c3dac287e270b1f4184ab107ff2dc22b402fb8b506555bb79844faa7de560ae9b4b9a9c18d6c95663b446a7ac48ad43f5b3bf17da6626962832b2438a0b
-NONCE_HASH_H_NI    : 5116c5da7ed5c717507d1b9c9ea3079d25a434352490a8ea0d9d3a866ad3bd60d667262d3429f996d5d3cceeb1c91e6b3f0c042866a1508503b0226c9f72d8b3
-BLOCK_HASH         : 8561ff84f7020c0bc4a63edc45460ace5cb3a064f7ac6bb353d8d2effbd19e1c5a2303b6a8ae61ca121849e1c8ea00555058f97e0992bcf41c55efc56685cdba
-TIME_TO_KNOW_NONCE : 9.31 µs (INSTANT)
-================================================================================
