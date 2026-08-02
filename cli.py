@@ -5,6 +5,7 @@ CLI Tool for 512-Bit Secret Seed Sequential Blockchain Identity & Instant Nonce 
 
 import argparse
 import hashlib
+import json
 import os
 import secrets
 import sys
@@ -188,6 +189,37 @@ def cmd_show_ledger(args):
         print(f"  Mint Resolution    : {block['time_to_know_nonce']}\n")
 
 
+def cmd_parse_block(args):
+    """Parse a block or ledger text file and output to JSON or stdout."""
+    filepath = args.file
+    if not os.path.exists(filepath):
+        print(f"Error: File '{filepath}' not found.")
+        sys.exit(1)
+        
+    # Try parsing as combined ledger or single block file
+    blocks = parse_chain_txt(filepath)
+    if not blocks:
+        block = parse_block_txt(filepath)
+        if block:
+            data_to_output = block
+        else:
+            print(f"Error: Could not parse block data from '{filepath}'.")
+            sys.exit(1)
+    elif len(blocks) == 1:
+        data_to_output = blocks[0]
+    else:
+        data_to_output = blocks
+
+    json_str = json.dumps(data_to_output, indent=2)
+    
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(json_str + "\n")
+        print(f"Successfully parsed '{filepath}' and saved JSON to '{args.out}'")
+    else:
+        print(json_str)
+
+
 def cmd_attack_sim(args):
     """Simulate an attacker attempting to brute-force a block nonce without the seed."""
     ledger_path = args.ledger
@@ -257,6 +289,13 @@ def main():
     p_show = subparsers.add_parser("show", help="Display all blocks in the text ledger")
     p_show.add_argument("-l", "--ledger", default="blockchain_ledger.txt", help="Path to ledger text file")
     p_show.set_defaults(func=cmd_show_ledger)
+    
+    # Command: parse_block & parse-block
+    for name in ["parse_block", "parse-block"]:
+        p_parse = subparsers.add_parser(name, help="Parse a block or ledger .txt file into JSON format")
+        p_parse.add_argument("file", help="Input .txt block or ledger file path")
+        p_parse.add_argument("-o", "--out", help="Output JSON file path (e.g., block.json)")
+        p_parse.set_defaults(func=cmd_parse_block)
     
     # Command: attack
     p_attack = subparsers.add_parser("attack", help="Simulate brute-force attack on a block nonce without seed")
