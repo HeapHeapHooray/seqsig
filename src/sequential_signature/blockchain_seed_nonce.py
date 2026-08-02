@@ -7,13 +7,13 @@ Model:
 - block_hash = SHA-512(current_data + nonce_hash)
 - `nonce_hash` is NOT written in Block k! It only appears in Block k+1 as `previous_nonce`.
 - Block k contains: index, data, previous_nonce, block_hash.
-- Final Block reveals `revealed_seed` and `prng_algorithm` for 100% full retrospective auditability.
+- Final Block reveals `revealed_seed` and `prng_algorithm` for 100% retrospective auditability.
 """
 
 import hashlib
 import secrets
 import time
-from prng512 import CryptoPRNG512
+from .prng512 import CryptoPRNG512
 
 
 def sha512_int(val: int) -> bytes:
