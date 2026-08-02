@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI Tool for Ledgerless 512-Bit Secret Seed Block Minting & Previous Nonce Revelation Verification.
+CLI Tool for Ledgerless 512-Bit Secret Seed Block Minting & Nonce Revelation Verification.
 """
 
 import argparse
@@ -104,6 +104,65 @@ def load_json_input(input_arg: str = None) -> dict:
     return None
 
 
+def cmd_genesis(args):
+    """
+    Generate the first block (Genesis Block #0) directly from a 512-bit secret seed.
+    """
+    seed_arg = getattr(args, "seed", None)
+    data_arg = getattr(args, "data", None) or "Genesis Block"
+    
+    if not seed_arg:
+        json_data = load_json_input(getattr(args, "json_file", None))
+        if json_data:
+            seed_arg = json_data.get("seed") or json_data.get("secret_seed")
+            data_arg = json_data.get("data", data_arg)
+
+    if not seed_arg:
+        print("Error: Missing required 512-bit secret seed. Use -s/--seed <seed_or_file> or pass block.json")
+        sys.exit(1)
+
+    seed_val = load_seed_from_arg_or_file(seed_arg)
+    
+    start_time = time.perf_counter()
+    prng = CryptoPRNG512(seed_val)
+    
+    # Genesis Block (index 0)
+    prev_nonce_hex = "0x0"
+    prev_nonce_hash_hex = "0" * 128
+    
+    # First secret nonce N_0 derived from seed
+    curr_nonce_int = prng.next_int()
+    curr_nonce_hash_hex = sha512_int(curr_nonce_int).hex()
+    
+    # Genesis block hash
+    block_content = (prev_nonce_hex + data_arg + curr_nonce_hash_hex).encode('utf-8')
+    block_hash = sha512_bytes(block_content).hex()
+    
+    elapsed_us = (time.perf_counter() - start_time) * 1_000_000
+    
+    genesis_block = {
+        "index": 0,
+        "data": data_arg,
+        "prev_nonce": prev_nonce_hex,
+        "prev_nonce_hash": prev_nonce_hash_hex,
+        "nonce_hash": curr_nonce_hash_hex,
+        "block_hash": block_hash,
+        "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
+    }
+    
+    if getattr(args, "txt_out", None):
+        save_block_to_txt(genesis_block, args.txt_out)
+        print(f"Saved genesis text block to: {args.txt_out}")
+        
+    if getattr(args, "out", None):
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(genesis_block, f, indent=2)
+            f.write("\n")
+        print(f"Saved genesis block JSON to: {args.out}")
+    elif not getattr(args, "txt_out", None):
+        print(json.dumps(genesis_block, indent=2))
+
+
 def cmd_mint_block(args):
     """
     Mint a standalone block revealing the secret nonce of the previous block 
@@ -135,10 +194,6 @@ def cmd_mint_block(args):
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # Generate nonces up to current step
-    # For Block k:
-    # - Step 0..k-1 generates previous secret nonces
-    # - Step k generates current secret nonce
     prev_nonce_hex = "0x0"
     prev_nonce_hash_hex = "0" * 128
     
@@ -149,11 +204,9 @@ def cmd_mint_block(args):
         prev_nonce_hex = hex(prev_nonce_int)
         prev_nonce_hash_hex = sha512_int(prev_nonce_int).hex()
     
-    # Current block nonce commitment
     curr_nonce_int = prng.next_int()
     curr_nonce_hash_hex = sha512_int(curr_nonce_int).hex()
     
-    # Block hash calculation: SHA-512(prev_nonce || data || curr_nonce_hash)
     block_content = (prev_nonce_hex + data_arg + curr_nonce_hash_hex).encode('utf-8')
     block_hash = sha512_bytes(block_content).hex()
     
@@ -162,14 +215,13 @@ def cmd_mint_block(args):
     minted_block = {
         "index": block_index,
         "data": data_arg,
-        "prev_nonce": prev_nonce_hex,            # Revealed 512-bit secret nonce from block k-1
-        "prev_nonce_hash": prev_nonce_hash_hex,  # SHA-512(prev_nonce) matching block k-1 commitment
-        "nonce_hash": curr_nonce_hash_hex,       # New commitment H(N_k) for current block k
+        "prev_nonce": prev_nonce_hex,
+        "prev_nonce_hash": prev_nonce_hash_hex,
+        "nonce_hash": curr_nonce_hash_hex,
         "block_hash": block_hash,
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
-    # Handle output destination
     if args.txt_out:
         save_block_to_txt(minted_block, args.txt_out)
         print(f"Saved text block to: {args.txt_out}")
@@ -220,7 +272,6 @@ def cmd_verify_block(args):
     
     curr_nonce_hash = block.get('nonce_hash', block.get('nonce_hash_H_Ni', ''))
     
-    # 1. If block has a revealed prev_nonce (index > 0), verify SHA512(prev_nonce) == prev_nonce_hash
     prev_nonce_str = block.get('prev_nonce', '0x0')
     if prev_nonce_str != '0x0':
         prev_nonce_int = int(prev_nonce_str, 16)
@@ -232,7 +283,6 @@ def cmd_verify_block(args):
     else:
         print("  [Check 1/2] Genesis Block (no previous nonce to reveal)")
         
-    # 2. Verify block hash calculation
     block_content = (prev_nonce_str + block['data'] + curr_nonce_hash).encode('utf-8')
     calc_block_hash = sha512_bytes(block_content).hex()
     if calc_block_hash != block['block_hash']:
@@ -242,7 +292,6 @@ def cmd_verify_block(args):
     print("  [Check 2/2] Block Hash Integrity: VALID ✅")
     print("\n✅ RESULT: BLOCK IS CRYPTOGRAPHICALLY VALID!")
     
-    # If a second block file is provided to verify the chain link
     if args.prev_file:
         if not os.path.exists(args.prev_file):
             print(f"Error: Previous block file '{args.prev_file}' not found.")
@@ -344,6 +393,16 @@ def main():
     p_gen.add_argument("-o", "--out", help="File path to save secret seed or identity JSON")
     p_gen.add_argument("-j", "--json", action="store_true", help="Output identity as JSON")
     p_gen.set_defaults(func=cmd_gen_seed)
+    
+    # Command: genesis / gen-genesis / genesis-block
+    for name in ["genesis", "gen-genesis", "genesis-block"]:
+        p_gen_b = subparsers.add_parser(name, help="Generate the first block (Genesis Block #0) directly from a secret seed")
+        p_gen_b.add_argument("json_file", nargs="?", default=None, help="Optional input block.json or '-' for stdin")
+        p_gen_b.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
+        p_gen_b.add_argument("-d", "--data", default="Genesis Block", help="Data message for genesis block")
+        p_gen_b.add_argument("-o", "--out", help="Output JSON file path for genesis block")
+        p_gen_b.add_argument("-t", "--txt-out", help="Output .txt file path for genesis block")
+        p_gen_b.set_defaults(func=cmd_genesis)
     
     # Command: mint
     p_mint = subparsers.add_parser("mint", help="Mint a block from block.json input (file or stdin)")
