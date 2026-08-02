@@ -29,7 +29,7 @@ or directly via the script:
 
 ## 🔒 Core Concept & Security Model
 
-The holder of a 512-bit Master Secret Seed can deterministically compute nonces in **~5 microseconds**, whereas external observers face a $2^{512}$ brute-force search space (~$10^{138}$ universe lifetimes) to forge a valid block.
+The holder of a 512-bit Master Secret Seed can deterministically compute nonces in **~5 microseconds**, whereas external observers face a $2^{512}$ brute-force search space ($\approx 10^{138}$ universe lifetimes) to forge a valid block.
 
 ### Key Innovations
 
