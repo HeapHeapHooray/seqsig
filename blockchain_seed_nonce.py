@@ -1,12 +1,9 @@
 """
 Blockchain Nonce Determinism & Pre-Image Revelation Scheme via 512-Bit Master Seed.
 
-Concept:
-- For Block k:
-  - Publishes `nonce_hash`: H(N_k), committing to secret nonce N_k for the current block.
-  - Publishes `prev_nonce`: N_{k-1}, revealing the secret pre-image nonce of the PREVIOUS block!
-- Anyone can verify SHA-512(prev_nonce) == previous_block.nonce_hash to confirm the creator 
-  possessed the secret seed that generated the previous commitment.
+Formula:
+- Block Hash = SHA-512(current_data + nonce_hash)
+- Next Block reveals `previous_nonce` (the 512-bit secret pre-image N_{k-1} from block k-1).
 """
 
 import hashlib
@@ -31,10 +28,9 @@ def save_block_to_txt(block: dict, filepath: str):
         "================================================================================",
         f"BLOCK_INDEX        : {block['index']}",
         f"DATA               : {block['data']}",
-        f"PREV_NONCE         : {block['prev_nonce']}",
-        f"PREV_NONCE_HASH    : {block['prev_nonce_hash']}",
         f"NONCE_HASH         : {block['nonce_hash']}",
         f"BLOCK_HASH         : {block['block_hash']}",
+        f"PREVIOUS_NONCE     : {block['previous_nonce']}",
         f"TIME_TO_KNOW_NONCE : {block['time_to_know_nonce']}",
         "================================================================================"
     ]
@@ -58,14 +54,12 @@ def parse_block_txt(filepath: str) -> dict:
                     block["index"] = int(val)
                 elif key == "data":
                     block["data"] = val
-                elif key == "prev_nonce":
-                    block["prev_nonce"] = val
-                elif key == "prev_nonce_hash":
-                    block["prev_nonce_hash"] = val
                 elif key == "nonce_hash" or key == "nonce_hash_h_ni":
                     block["nonce_hash"] = val
                 elif key == "block_hash":
                     block["block_hash"] = val
+                elif key == "previous_nonce" or key == "prev_nonce":
+                    block["previous_nonce"] = val
                 elif key == "time_to_know_nonce":
                     block["time_to_know_nonce"] = val
     return block
