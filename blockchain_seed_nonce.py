@@ -99,7 +99,115 @@ def simulate_attacker_brute_force(target_hash_hex: str, max_attempts: int = 100_
     return False
 
 
+def save_block_to_txt(block: dict, filepath: str):
+    """Save a block dictionary into a clean, human-readable & easily parsable .txt file."""
+    lines = [
+        "================================================================================",
+        f"BLOCK_INDEX        : {block['index']}",
+        f"DATA               : {block['data']}",
+        f"PREV_HASH          : {block['prev_hash']}",
+        f"NONCE_N_I          : {block['nonce_N_i']}",
+        f"NONCE_HASH_H_NI    : {block['nonce_hash_H_Ni']}",
+        f"BLOCK_HASH         : {block['block_hash']}",
+        f"TIME_TO_KNOW_NONCE : {block['time_to_know_nonce']}",
+        "================================================================================"
+    ]
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def parse_block_txt(filepath: str) -> dict:
+    """Parse a block data .txt file into a Python dictionary."""
+    block = {}
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("="):
+                continue
+            if ":" in line:
+                key, val = line.split(":", 1)
+                key = key.strip().lower()
+                val = val.strip()
+                if key == "block_index":
+                    block["index"] = int(val)
+                elif key == "data":
+                    block["data"] = val
+                elif key == "prev_hash":
+                    block["prev_hash"] = val
+                elif key == "nonce_n_i":
+                    block["nonce_N_i"] = val
+                elif key == "nonce_hash_h_ni":
+                    block["nonce_hash_H_Ni"] = val
+                elif key == "block_hash":
+                    block["block_hash"] = val
+                elif key == "time_to_know_nonce":
+                    block["time_to_know_nonce"] = val
+    return block
+
+
+def save_chain_to_txt(chain_blocks: list[dict], filepath: str):
+    """Save an entire blockchain ledger to a single combined .txt file."""
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("BEGIN BLOCKCHAIN LEDGER\n\n")
+        for block in chain_blocks:
+            lines = [
+                "--- BEGIN BLOCK ---",
+                f"BLOCK_INDEX        : {block['index']}",
+                f"DATA               : {block['data']}",
+                f"PREV_HASH          : {block['prev_hash']}",
+                f"NONCE_N_I          : {block['nonce_N_i']}",
+                f"NONCE_HASH_H_NI    : {block['nonce_hash_H_Ni']}",
+                f"BLOCK_HASH         : {block['block_hash']}",
+                f"TIME_TO_KNOW_NONCE : {block['time_to_know_nonce']}",
+                "--- END BLOCK ---\n"
+            ]
+            f.write("\n".join(lines) + "\n")
+        f.write("END BLOCKCHAIN LEDGER\n")
+
+
+def parse_chain_txt(filepath: str) -> list[dict]:
+    """Parse an entire combined blockchain ledger .txt file into a list of block dicts."""
+    blocks = []
+    current_block = {}
+    in_block = False
+    
+    with open(filepath, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line == "--- BEGIN BLOCK ---":
+                current_block = {}
+                in_block = True
+                continue
+            elif line == "--- END BLOCK ---":
+                if current_block:
+                    blocks.append(current_block)
+                in_block = False
+                continue
+            
+            if in_block and ":" in line:
+                key, val = line.split(":", 1)
+                key = key.strip().lower()
+                val = val.strip()
+                if key == "block_index":
+                    current_block["index"] = int(val)
+                elif key == "data":
+                    current_block["data"] = val
+                elif key == "prev_hash":
+                    current_block["prev_hash"] = val
+                elif key == "nonce_n_i":
+                    current_block["nonce_N_i"] = val
+                elif key == "nonce_hash_h_ni":
+                    current_block["nonce_hash_H_Ni"] = val
+                elif key == "block_hash":
+                    current_block["block_hash"] = val
+                elif key == "time_to_know_nonce":
+                    current_block["time_to_know_nonce"] = val
+                    
+    return blocks
+
+
 def run_demo():
+    import os
     print("=" * 80)
     print("BLOCKCHAIN DEMO: INSTANT NONCE KNOWLEDGE VIA SECRET SEED")
     print("=" * 80 + "\n")
@@ -132,15 +240,45 @@ def run_demo():
         print(f"  Block Hash:")
         print(f"    {block['block_hash'][:40]}...")
         print(f"  Time taken by Seed Holder: {block['time_to_know_nonce']}\n")
-        
+
+    # 3. Export to .txt files
     print("-" * 80)
-    print("3. COMPARISON: OUTSIDER / NETWORK VALIDATOR WITHOUT SEED")
+    print("3. EXPORTING BLOCKCHAIN DATA TO .TXT FILES")
     print("-" * 80)
     
-    # Try to guess Block #1's nonce without the seed
+    os.makedirs("blocks", exist_ok=True)
+    for block in chain.blocks:
+        filename = f"blocks/block_{block['index']}.txt"
+        save_block_to_txt(block, filename)
+        print(f"Saved: {filename}")
+        
+    ledger_filename = "blockchain_ledger.txt"
+    save_chain_to_txt(chain.blocks, ledger_filename)
+    print(f"Saved combined ledger: {ledger_filename}\n")
+    
+    # 4. Parse & Verify from .txt files
+    print("-" * 80)
+    print("4. PARSING & VERIFYING FROM .TXT FILES")
+    print("-" * 80)
+    
+    parsed_block_0 = parse_block_txt("blocks/block_0.txt")
+    print(f"Parsed 'blocks/block_0.txt':")
+    print(f"  Block Index : {parsed_block_0['index']}")
+    print(f"  Data        : '{parsed_block_0['data']}'")
+    print(f"  Block Hash  : {parsed_block_0['block_hash'][:40]}...\n")
+    
+    parsed_chain = parse_chain_txt(ledger_filename)
+    print(f"Parsed combined ledger '{ledger_filename}': {len(parsed_chain)} blocks successfully loaded.")
+    
+    # 5. Attacker comparison
+    print("\n" + "-" * 80)
+    print("5. COMPARISON: OUTSIDER / NETWORK VALIDATOR WITHOUT SEED")
+    print("-" * 80)
+    
     target_block = chain.blocks[1]
     simulate_attacker_brute_force(target_block["nonce_hash_H_Ni"], max_attempts=100_000)
 
 
 if __name__ == "__main__":
     run_demo()
+

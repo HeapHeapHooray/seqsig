@@ -1,0 +1,9 @@
+================================================================================
+BLOCK_INDEX        : 0
+DATA               : Genesis Block - Identity Registration
+PREV_HASH          : 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+NONCE_N_I          : 0x7645b5152abe8e98037309e81068848d96c08ecb42ba21219cb417072e7b8bbff890a0876b9d58b2a817d75ccffa226cb98f437e09ab70873f744f3bd398c211
+NONCE_HASH_H_NI    : 1be5bcc668fd7ab1cfd5990f2b420c0532ccaaeae4515e03b0906ab37f3cf361ee91ef75f625ecd254451f7f7fba7c5115eb292a824b77912a8dfd6afe23d93f
+BLOCK_HASH         : aca157cce293a03de790c4970d42b4953b60c0d1652ddefd8b9c4afdcb87d83808dd2b313db1bf92d8512cda93867259c308a4db289264e599490e590ef545ce
+TIME_TO_KNOW_NONCE : 19.95 µs (INSTANT)
+================================================================================

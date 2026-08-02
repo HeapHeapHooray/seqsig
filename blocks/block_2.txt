@@ -1,0 +1,9 @@
+================================================================================
+BLOCK_INDEX        : 2
+DATA               : Block #2: Execute Smart Contract #4092
+PREV_HASH          : d22d3eaad138295ddd088798cc02952e89af9de086baa9c4f2980a86a1de2a5bdbee9c7a60d46e689e180a189c5142f522ac752c551ee91b6b1c14e4f80b2142
+NONCE_N_I          : 0x77424d3b0013999f49ec06e260a3e3689396f94bffc054b430905f4c5a112c8afda3118917564be413a9b3156439658df4094c07e6288b7871ebe46f5ef6167d
+NONCE_HASH_H_NI    : 29e673bcab5ad320bc7394c7d9e936fda8062e05a62b0d4854da31670894f01c3d8df4fb18ae8258e6ab4f9cdfdc1a6e52c5fb27d26c8c80441f8ffda60b4c2a
+BLOCK_HASH         : 76077deba906e3b752d0e7f9af2f1b4294e9664698e57bc3b6d5b7b0ebd99a10afebd7d111bd9fb8675d51e11ce835788d494f14f87a477691309efa9ddb0760
+TIME_TO_KNOW_NONCE : 4.56 µs (INSTANT)
+================================================================================
