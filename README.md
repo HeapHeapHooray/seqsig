@@ -1,5 +1,7 @@
 # SeqSig (Sequential Signature)
 
+> **Designed & Implemented with Antigravity AI (Gemini 3.6 Flash)** — Google DeepMind
+
 **SeqSig** is a ledgerless, cryptographically verifiable 512-bit Secret Seed Sequential Identity and Signature CLI powered by SHAKE-256 PRNG key-ratcheting.
 
 ---
