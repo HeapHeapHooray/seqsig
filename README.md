@@ -1,26 +1,26 @@
-# 512-Bit Secret Seed Sequential Blockchain Identity
+# SeqSig (Sequential Signature)
 
-A ledgerless, cryptographically verifiable sequential identity and blockchain signing scheme powered by a 512-bit secret seed and SHAKE-256 PRNG key-ratcheting.
+**SeqSig** is a ledgerless, cryptographically verifiable 512-bit Secret Seed Sequential Identity and Signature CLI powered by SHAKE-256 PRNG key-ratcheting.
 
 ---
 
 ## ⚡ Installation with `uv`
 
-You can build and install `sequential-signature` directly with [`uv`](https://github.com/astral-sh/uv):
+Install **SeqSig** directly using [`uv`](https://github.com/astral-sh/uv):
 
-### Global Tool Installation with `uv tool`
+### Global Tool Installation
 ```bash
 uv tool install .
 ```
-This installs the `sequential-signature` (and alias `seqsig`) commands globally into your environment.
+This installs the `seqsig` command globally on your system.
 
-### Run directly with `uvx` / `uv run`
+### Run with `uv run`
 ```bash
 uv run seqsig --help
 ```
-or without installation:
+or directly via the script:
 ```bash
-uv run cli.py --help
+./cli.py --help
 ```
 
 ---
@@ -46,8 +46,6 @@ The holder of a 512-bit Master Secret Seed can deterministically compute nonces 
 ---
 
 ## 🚀 Quick Start & CLI Usage
-
-Once installed via `uv tool install .`, use `seqsig` (or `sequential-signature`):
 
 ### 1. Generate 512-Bit Secret Seed & Public Identity
 ```bash
@@ -104,7 +102,7 @@ seqsig verify b3_final.json -p b2.json
 
 ## 🧪 Running Unit Tests
 
-Run test suite:
+Run the test suite:
 ```bash
 uv run tests/test_prng512.py
 ```

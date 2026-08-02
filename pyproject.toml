@@ -3,16 +3,15 @@ requires = ["flit_core >=3.2,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "sequential-signature"
+name = "seqsig"
 version = "0.1.0"
-description = "512-Bit Secret Seed Sequential Blockchain Identity CLI"
+description = "SeqSig: 512-Bit Secret Seed Sequential Signature & Identity CLI"
 readme = "README.md"
 authors = [
-    { name = "Sequential Signature Team" }
+    { name = "SeqSig Developers" }
 ]
 requires-python = ">=3.8"
 dependencies = []
 
 [project.scripts]
-sequential-signature = "sequential_signature.cli:main"
-seqsig = "sequential_signature.cli:main"
+seqsig = "seqsig.cli:main"

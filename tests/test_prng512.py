@@ -10,7 +10,7 @@ src_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-from sequential_signature.prng512 import CryptoPRNG512, FastPRNG512, Random512
+from seqsig.prng512 import CryptoPRNG512, FastPRNG512, Random512
 
 
 def test_crypto_prng():
