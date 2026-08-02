@@ -21,6 +21,7 @@ from prng512 import CryptoPRNG512
 from blockchain_seed_nonce import (
     save_block_to_txt,
     parse_block_txt,
+    format_block_txt_str,
     sha512_int,
     sha512_bytes,
     compute_nonce_hash,
@@ -90,26 +91,72 @@ def load_seed_from_arg_or_file(seed_input: str) -> int:
 
 
 def load_json_input(input_arg: str = None) -> dict:
-    """Load JSON payload from file path or stdin."""
-    json_raw = None
+    """Load JSON or TXT payload from file path or stdin."""
+    raw_content = None
     if input_arg and input_arg != "-":
         if os.path.exists(input_arg):
+            if input_arg.endswith(".txt"):
+                return parse_block_txt(input_arg)
             with open(input_arg, "r", encoding="utf-8") as f:
-                json_raw = f.read()
+                raw_content = f.read().strip()
         else:
-            json_raw = input_arg
+            raw_content = input_arg
     else:
         # Read from stdin if piped or input_arg is '-'
         if not sys.stdin.isatty() or input_arg == "-":
-            json_raw = sys.stdin.read()
+            raw_content = sys.stdin.read().strip()
 
-    if json_raw:
-        try:
-            return json.loads(json_raw)
-        except Exception as e:
-            print(f"Error parsing JSON input: {e}")
-            sys.exit(1)
+    if raw_content:
+        if raw_content.startswith("="):
+            # Parse text format from stdin
+            lines = raw_content.splitlines()
+            block = {}
+            for line in lines:
+                line = line.strip()
+                if ":" in line:
+                    key, val = line.split(":", 1)
+                    key = key.strip().lower()
+                    val = val.strip()
+                    if key == "block_index":
+                        block["index"] = int(val)
+                    elif key == "data":
+                        block["data"] = val
+                    elif key == "previous_nonce" or key == "prev_nonce":
+                        block["previous_nonce"] = val
+                    elif key == "block_hash":
+                        block["block_hash"] = val
+            return block
+        else:
+            try:
+                return json.loads(raw_content)
+            except Exception as e:
+                print(f"Error parsing JSON input: {e}")
+                sys.exit(1)
     return None
+
+
+def output_block(block: dict, json_out_path: str = None, txt_out_path: str = None):
+    """Output block dictionary as JSON or plain text file / stdout."""
+    if txt_out_path:
+        txt_str = format_block_txt_str(block)
+        if txt_out_path in ("-", "stdout"):
+            print(txt_str, end="")
+        else:
+            save_block_to_txt(block, txt_out_path)
+            print(f"Saved text block to: {txt_out_path}")
+            
+    if json_out_path:
+        json_str = json.dumps(block, indent=2) + "\n"
+        if json_out_path in ("-", "stdout"):
+            print(json_str, end="")
+        else:
+            with open(json_out_path, "w", encoding="utf-8") as f:
+                f.write(json_str)
+            print(f"Saved JSON block to: {json_out_path}")
+            
+    if not txt_out_path and not json_out_path:
+        # Default stdout: print JSON
+        print(json.dumps(block, indent=2))
 
 
 def cmd_genesis(args):
@@ -154,41 +201,29 @@ def cmd_genesis(args):
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
-    if getattr(args, "txt_out", None):
-        save_block_to_txt(genesis_block, args.txt_out)
-        print(f"Saved genesis text block to: {args.txt_out}")
-        
-    if getattr(args, "out", None):
-        with open(args.out, "w", encoding="utf-8") as f:
-            json.dump(genesis_block, f, indent=2)
-            f.write("\n")
-        print(f"Saved genesis block JSON to: {args.out}")
-    elif not getattr(args, "txt_out", None):
-        print(json.dumps(genesis_block, indent=2))
+    output_block(genesis_block, json_out_path=getattr(args, "out", None), txt_out_path=getattr(args, "txt_out", None))
 
 
 def cmd_mint_block(args):
     """
     Mint the NEXT block (Block k+1) given the CURRENT block (Block k):
-    - Reads current block index k (from fed block.json or stdin). Next index = k + 1.
+    - Reads current block index k (from fed block.json, block.txt, or stdin). Next index = k + 1.
     - Calculates `previous_nonce` for Block k+1 = SHA-512(N_k), revealing current block's nonce.
     - Calculates `block_hash` for Block k+1 = SHA-512(new_data + SHA-512(N_{k+1})).
     - Outputs the NEW NEXT BLOCK (Block k+1).
     """
-    input_json = load_json_input(args.json_file)
+    input_data = load_json_input(args.json_file)
     
     seed_arg = None
     new_data = None
     current_index = -1
     
-    if input_json:
-        # Check if fed JSON is a block
-        if "index" in input_json:
-            current_index = input_json["index"]
+    if input_data:
+        if "index" in input_data:
+            current_index = input_data["index"]
             
-        seed_arg = input_json.get("seed") or input_json.get("secret_seed")
-        # Check for new data fields
-        new_data = input_json.get("next_data") or (input_json.get("data") if "index" not in input_json else None)
+        seed_arg = input_data.get("seed") or input_data.get("secret_seed")
+        new_data = input_data.get("next_data") or (input_data.get("data") if "index" not in input_data else None)
         
     if not seed_arg and getattr(args, "seed", None):
         seed_arg = args.seed
@@ -232,17 +267,7 @@ def cmd_mint_block(args):
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
-    if args.txt_out:
-        save_block_to_txt(next_block, args.txt_out)
-        print(f"Saved next block text to: {args.txt_out}")
-        
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            json.dump(next_block, f, indent=2)
-            f.write("\n")
-        print(f"Saved next block JSON to: {args.out}")
-    elif not args.txt_out:
-        print(json.dumps(next_block, indent=2))
+    output_block(next_block, json_out_path=getattr(args, "out", None), txt_out_path=getattr(args, "txt_out", None))
 
 
 def cmd_verify_block(args):
@@ -306,7 +331,7 @@ def cmd_verify_block(args):
 
 
 def cmd_parse_block(args):
-    """Parse a block .txt or .json file and output JSON to file or stdout."""
+    """Parse a block .txt or .json file and output to JSON or text."""
     filepath = args.file
     if not os.path.exists(filepath):
         print(f"Error: File '{filepath}' not found.")
@@ -322,14 +347,7 @@ def cmd_parse_block(args):
         print(f"Error: Could not parse block data from '{filepath}'.")
         sys.exit(1)
 
-    json_str = json.dumps(block, indent=2)
-    
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            f.write(json_str + "\n")
-        print(f"Successfully parsed '{filepath}' and saved JSON to '{args.out}'")
-    else:
-        print(json_str)
+    output_block(block, json_out_path=getattr(args, "out", None), txt_out_path=getattr(args, "txt_out", None))
 
 
 def cmd_attack_sim(args):
@@ -395,20 +413,20 @@ def main():
     # Command: genesis / gen-genesis / genesis-block
     for name in ["genesis", "gen-genesis", "genesis-block"]:
         p_gen_b = subparsers.add_parser(name, help="Generate the first block (Genesis Block #0) directly from a secret seed")
-        p_gen_b.add_argument("json_file", nargs="?", default=None, help="Optional input block.json or '-' for stdin")
+        p_gen_b.add_argument("json_file", nargs="?", default=None, help="Optional input block.json / block.txt or '-' for stdin")
         p_gen_b.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
         p_gen_b.add_argument("-d", "--data", default="Genesis Block", help="Data message for genesis block")
         p_gen_b.add_argument("-o", "--out", help="Output JSON file path for genesis block")
-        p_gen_b.add_argument("-t", "--txt-out", help="Output .txt file path for genesis block")
+        p_gen_b.add_argument("-t", "--txt-out", help="Output .txt file path or '-' for stdout text")
         p_gen_b.set_defaults(func=cmd_genesis)
     
     # Command: mint
     p_mint = subparsers.add_parser("mint", help="Mint next block by feeding current block (file or stdin)")
-    p_mint.add_argument("json_file", nargs="?", default=None, help="Path to current block.json file or '-' for stdin")
+    p_mint.add_argument("json_file", nargs="?", default=None, help="Path to current block (.json/.txt) or '-' for stdin")
     p_mint.add_argument("-s", "--seed", help="512-bit secret seed (hex string or file path)")
     p_mint.add_argument("-d", "--data", help="Data / Transaction message for the NEW block")
     p_mint.add_argument("-o", "--out", help="Output JSON file path for NEW minted block")
-    p_mint.add_argument("-t", "--txt-out", help="Output .txt file path for NEW minted block")
+    p_mint.add_argument("-t", "--txt-out", help="Output .txt file path or '-' for stdout text")
     p_mint.set_defaults(func=cmd_mint_block)
     
     # Command: verify
@@ -419,9 +437,10 @@ def main():
     
     # Command: parse_block & parse-block
     for name in ["parse_block", "parse-block"]:
-        p_parse = subparsers.add_parser(name, help="Parse a block file into JSON format")
+        p_parse = subparsers.add_parser(name, help="Parse a block file into JSON format or text format")
         p_parse.add_argument("file", help="Input .txt or .json block file path")
         p_parse.add_argument("-o", "--out", help="Output JSON file path")
+        p_parse.add_argument("-t", "--txt-out", help="Output .txt file path or '-' for stdout text")
         p_parse.set_defaults(func=cmd_parse_block)
     
     # Command: attack

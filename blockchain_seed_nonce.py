@@ -35,19 +35,24 @@ def compute_block_hash(data: str, nonce_hash: str) -> str:
     return sha512_bytes((data + nonce_hash).encode('utf-8')).hex()
 
 
-def save_block_to_txt(block: dict, filepath: str):
-    """Save a block dictionary into a clean, human-readable & easily parsable .txt file."""
+def format_block_txt_str(block: dict) -> str:
+    """Format a block dictionary into a clean text block string."""
     lines = [
         "================================================================================",
         f"BLOCK_INDEX        : {block['index']}",
         f"DATA               : {block['data']}",
         f"PREVIOUS_NONCE     : {block['previous_nonce']}",
         f"BLOCK_HASH         : {block['block_hash']}",
-        f"TIME_TO_KNOW_NONCE : {block['time_to_know_nonce']}",
+        f"TIME_TO_KNOW_NONCE : {block.get('time_to_know_nonce', 'INSTANT')}",
         "================================================================================"
     ]
+    return "\n".join(lines) + "\n"
+
+
+def save_block_to_txt(block: dict, filepath: str):
+    """Save a block dictionary into a clean, human-readable & easily parsable .txt file."""
     with open(filepath, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(format_block_txt_str(block))
 
 
 def parse_block_txt(filepath: str) -> dict:
