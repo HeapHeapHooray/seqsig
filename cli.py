@@ -2,9 +2,11 @@
 """
 CLI Tool for 512-Bit Secret Seed Sequential Blockchain Identity.
 
-Formula:
-- block_hash = SHA-512(current_data + nonce_hash)
-- In the next block, the previous secret nonce (N_{k-1}) is revealed as `previous_nonce`.
+Security Guarantee:
+- Raw PRNG numbers (N_k) are NEVER revealed anywhere.
+- Level 1 Hash: H1(N_k) = SHA-512(N_k) is revealed in Block k+1 as `previous_nonce` (a hash!).
+- Level 2 Hash: H2(N_k) = SHA-512(H1(N_k)) is committed in Block k as `nonce_hash`.
+- Block Hash: block_hash = SHA-512(current_data + nonce_hash).
 """
 
 import argparse
@@ -20,7 +22,9 @@ from blockchain_seed_nonce import (
     save_block_to_txt,
     parse_block_txt,
     sha512_int,
-    sha512_bytes
+    sha512_bytes,
+    prng_level1_hash,
+    prng_level2_hash
 )
 
 
@@ -110,7 +114,10 @@ def load_json_input(input_arg: str = None) -> dict:
 
 def cmd_genesis(args):
     """
-    Generate the first block (Genesis Block #0) directly from a 512-bit secret seed.
+    Generate Genesis Block #0 directly from secret seed.
+    Raw PRNG number N_0 is kept secret!
+    Level 1 Hash H1(N_0) = SHA-512(N_0)
+    Level 2 Hash H2(N_0) = SHA-512(H1(N_0)) -> nonce_hash
     block_hash = SHA-512(current_data + nonce_hash)
     """
     seed_arg = getattr(args, "seed", None)
@@ -131,11 +138,16 @@ def cmd_genesis(args):
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # Secret nonce N_0 for Genesis Block #0
-    curr_nonce_int = prng.next_int()
-    nonce_hash_hex = sha512_int(curr_nonce_int).hex()
+    # 1. Private raw PRNG number N_0 (NEVER REVEALED)
+    raw_N0 = prng.next_int()
     
-    # block_hash = SHA-512(current_data + nonce_hash)
+    # 2. Level 1 Hash H1(N_0) (Revealed in Block 1 as previous_nonce)
+    level1_h0 = prng_level1_hash(raw_N0)
+    
+    # 3. Level 2 Hash H2(N_0) (Committed in Genesis Block 0 as nonce_hash)
+    nonce_hash_hex = prng_level2_hash(level1_h0)
+    
+    # 4. block_hash = SHA-512(current_data + nonce_hash)
     block_hash = sha512_bytes((data_arg + nonce_hash_hex).encode('utf-8')).hex()
     
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
@@ -165,8 +177,10 @@ def cmd_genesis(args):
 def cmd_mint_block(args):
     """
     Mint Block k:
-    - block_hash = SHA-512(current_data + nonce_hash)
-    - previous_nonce = N_{k-1} (revealed secret nonce from block k-1)
+    - Raw PRNG numbers N_k are NEVER revealed.
+    - `previous_nonce` = H1(N_{k-1}) (a hash!)
+    - `nonce_hash` = H2(N_k) = SHA-512(H1(N_k))
+    - `block_hash` = SHA-512(current_data + nonce_hash)
     """
     block_json_data = load_json_input(args.json_file)
     
@@ -194,22 +208,21 @@ def cmd_mint_block(args):
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # Generate nonces up to current step
-    # For Block k:
-    # - Steps 0..k-1 generate nonces up to previous secret nonce N_{k-1}
-    # - Step k generates current secret nonce N_k
-    previous_nonce_hex = "0x0"
+    # 1. Level 1 Hash of previous block: H1(N_{k-1}) = SHA-512(N_{k-1})
+    previous_nonce_hash = "0x0"
     if block_index > 0:
         for _ in range(block_index - 1):
             prng.next_bytes()
-        prev_nonce_int = prng.next_int()
-        previous_nonce_hex = hex(prev_nonce_int)
+        raw_prev_N = prng.next_int()
+        # previous_nonce is H1(N_{k-1}), which is a SHA-512 hash string!
+        previous_nonce_hash = prng_level1_hash(raw_prev_N)
     
-    # Current block secret nonce N_k
-    curr_nonce_int = prng.next_int()
-    nonce_hash_hex = sha512_int(curr_nonce_int).hex()
+    # 2. Current block secret PRNG number N_k (NEVER REVEALED)
+    raw_curr_N = prng.next_int()
+    level1_curr_h = prng_level1_hash(raw_curr_N)
+    nonce_hash_hex = prng_level2_hash(level1_curr_h)
     
-    # block_hash = SHA-512(current_data + nonce_hash)
+    # 3. block_hash = SHA-512(current_data + nonce_hash)
     block_hash = sha512_bytes((data_arg + nonce_hash_hex).encode('utf-8')).hex()
     
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
@@ -219,7 +232,7 @@ def cmd_mint_block(args):
         "data": data_arg,
         "nonce_hash": nonce_hash_hex,
         "block_hash": block_hash,
-        "previous_nonce": previous_nonce_hex,
+        "previous_nonce": previous_nonce_hash,  # Level 1 Hash H1(N_{k-1})
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
@@ -281,7 +294,7 @@ def cmd_verify_block(args):
         sys.exit(1)
     print("  [Check 1] Block Hash Integrity: SHA-512(current_data + nonce_hash) VALID ✅")
     
-    # 2. If previous block file is provided, verify pre-image revelation
+    # 2. If previous block file is provided, verify Level 1 pre-image hash revelation
     if args.prev_file:
         if not os.path.exists(args.prev_file):
             print(f"Error: Previous block file '{args.prev_file}' not found.")
@@ -289,7 +302,7 @@ def cmd_verify_block(args):
             
         prev_block = parse_block_txt(args.prev_file) if not args.prev_file.endswith(".json") else json.load(open(args.prev_file))
         print("\n" + "-" * 80)
-        print(f"VERIFYING PREVIOUS NONCE REVELATION (Block #{prev_block.get('index')} -> Block #{block.get('index')})")
+        print(f"VERIFYING PREVIOUS NONCE HASH REVELATION (Block #{prev_block.get('index')} -> Block #{block.get('index')})")
         print("-" * 80)
         
         revealed_prev_nonce = block.get('previous_nonce')
@@ -297,11 +310,11 @@ def cmd_verify_block(args):
             print("❌ Error: Current block has no previous nonce revealed.")
             sys.exit(1)
             
-        prev_nonce_int = int(revealed_prev_nonce, 16)
-        calc_prev_hash = sha512_int(prev_nonce_int).hex()
+        # SHA-512(H1(N_{k-1})) == H2(N_{k-1})
+        calc_prev_level2 = prng_level2_hash(revealed_prev_nonce)
+        expected_prev_level2 = prev_block.get('nonce_hash')
         
-        expected_prev_hash = prev_block.get('nonce_hash')
-        if calc_prev_hash == expected_prev_hash:
+        if calc_prev_level2 == expected_prev_level2:
             print("  Pre-Image Revelation Verification: SHA-512(previous_nonce) MATCHES previous block's nonce_hash! ✅")
         else:
             print("  ❌ Pre-Image Revelation Verification: SHA-512(previous_nonce) DOES NOT MATCH previous block's nonce_hash!")
