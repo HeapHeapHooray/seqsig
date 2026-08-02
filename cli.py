@@ -5,8 +5,8 @@ CLI Tool for 512-Bit Secret Seed Sequential Blockchain Identity.
 Model:
 - Single Hash: nonce_hash = SHA-512(N_k)
 - block_hash = SHA-512(current_data + nonce_hash)
-- `previous_nonce` in Block k is the `nonce_hash` of Block k-1!
-- Raw PRNG numbers are never revealed.
+- `nonce_hash` is NOT written in Block k! It only appears in Block k+1 as `previous_nonce`.
+- Block k contains only: index, data, previous_nonce, block_hash.
 """
 
 import argparse
@@ -115,8 +115,9 @@ def load_json_input(input_arg: str = None) -> dict:
 def cmd_genesis(args):
     """
     Generate Genesis Block #0 directly from secret seed.
-    nonce_hash = SHA-512(N_0)
-    block_hash = SHA-512(current_data + nonce_hash)
+    nonce_hash_0 = SHA-512(N_0) (calculated locally, NOT written to block)
+    block_hash_0 = SHA-512(data_0 + nonce_hash_0)
+    previous_nonce = "0x0"
     """
     seed_arg = getattr(args, "seed", None)
     data_arg = getattr(args, "data", None) or "Genesis Block"
@@ -136,23 +137,20 @@ def cmd_genesis(args):
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # 1. Private PRNG number N_0
+    # Private PRNG number N_0
     raw_N0 = prng.next_int()
+    nonce_hash_0 = compute_nonce_hash(raw_N0)
     
-    # 2. Single Hash: nonce_hash = SHA-512(N_0)
-    nonce_hash_hex = compute_nonce_hash(raw_N0)
-    
-    # 3. block_hash = SHA-512(current_data + nonce_hash)
-    block_hash = compute_block_hash(data_arg, nonce_hash_hex)
+    # block_hash = SHA-512(data_0 + nonce_hash_0)
+    block_hash = compute_block_hash(data_arg, nonce_hash_0)
     
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
     
     genesis_block = {
         "index": 0,
         "data": data_arg,
-        "nonce_hash": nonce_hash_hex,
-        "block_hash": block_hash,
         "previous_nonce": "0x0",
+        "block_hash": block_hash,
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
@@ -172,9 +170,9 @@ def cmd_genesis(args):
 def cmd_mint_block(args):
     """
     Mint Block k:
-    - nonce_hash = SHA-512(N_k)
-    - block_hash = SHA-512(current_data + nonce_hash)
-    - previous_nonce = nonce_hash of Block k-1
+    - previous_nonce = nonce_hash_{k-1} (revealed SHA-512(N_{k-1}) from block k-1)
+    - block_hash = SHA-512(current_data + nonce_hash_k)
+    - nonce_hash_k is NOT written in Block k!
     """
     block_json_data = load_json_input(args.json_file)
     
@@ -202,7 +200,7 @@ def cmd_mint_block(args):
     start_time = time.perf_counter()
     prng = CryptoPRNG512(seed_val)
     
-    # 1. previous_nonce is the nonce_hash of previous block: SHA-512(N_{k-1})
+    # 1. previous_nonce is the nonce_hash of Block k-1: SHA-512(N_{k-1})
     previous_nonce_val = "0x0"
     if block_index > 0:
         for _ in range(block_index - 1):
@@ -210,21 +208,20 @@ def cmd_mint_block(args):
         raw_prev_N = prng.next_int()
         previous_nonce_val = compute_nonce_hash(raw_prev_N)
     
-    # 2. Current block PRNG number N_k and single hash
+    # 2. Current block PRNG number N_k and nonce_hash_k (used for block_hash calculation)
     raw_curr_N = prng.next_int()
-    nonce_hash_hex = compute_nonce_hash(raw_curr_N)
+    nonce_hash_k = compute_nonce_hash(raw_curr_N)
     
-    # 3. block_hash = SHA-512(current_data + nonce_hash)
-    block_hash = compute_block_hash(data_arg, nonce_hash_hex)
+    # 3. block_hash = SHA-512(current_data + nonce_hash_k)
+    block_hash = compute_block_hash(data_arg, nonce_hash_k)
     
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
     
     minted_block = {
         "index": block_index,
         "data": data_arg,
-        "nonce_hash": nonce_hash_hex,
-        "block_hash": block_hash,
         "previous_nonce": previous_nonce_val,
+        "block_hash": block_hash,
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
     
@@ -243,8 +240,8 @@ def cmd_mint_block(args):
 
 def cmd_verify_block(args):
     """
-    Verify block hash integrity: block_hash == SHA-512(current_data + nonce_hash)
-    If previous_file is provided, verify current_block.previous_nonce == previous_block.nonce_hash
+    Verify Block k against Block k-1 (or verify Block k+1 against Block k):
+    Block k+1's `previous_nonce` is the missing `nonce_hash_k` that proves Block k's `block_hash`!
     """
     filepath = args.file
     if not os.path.exists(filepath):
@@ -272,21 +269,10 @@ def cmd_verify_block(args):
     print(f"VERIFYING BLOCK #{block.get('index', 0)}")
     print("=" * 80)
     print(f"  Data                 : '{block.get('data')}'")
-    print(f"  Nonce Hash           : {block.get('nonce_hash')[:32]}...")
-    print(f"  Block Hash           : {block.get('block_hash')[:32]}...")
     print(f"  Previous Nonce       : {block.get('previous_nonce', '0x0')[:32]}...")
+    print(f"  Block Hash           : {block.get('block_hash')[:32]}...")
     
-    # 1. Verify block_hash == SHA-512(current_data + nonce_hash)
-    block_data = block.get('data', '')
-    nonce_hash = block.get('nonce_hash', '')
-    calc_block_hash = compute_block_hash(block_data, nonce_hash)
-    
-    if calc_block_hash != block.get('block_hash'):
-        print("\n❌ RESULT: INVALID BLOCK HASH! Formula SHA-512(current_data + nonce_hash) does not match!")
-        sys.exit(1)
-    print("  [Check 1] Block Hash Integrity: SHA-512(current_data + nonce_hash) VALID ✅")
-    
-    # 2. If previous block file is provided, verify previous_nonce link
+    # If a previous block file (Block k-1) is provided, Block k's previous_nonce unlocks Block k-1's block_hash!
     if args.prev_file:
         if not os.path.exists(args.prev_file):
             print(f"Error: Previous block file '{args.prev_file}' not found.")
@@ -294,19 +280,22 @@ def cmd_verify_block(args):
             
         prev_block = parse_block_txt(args.prev_file) if not args.prev_file.endswith(".json") else json.load(open(args.prev_file))
         print("\n" + "-" * 80)
-        print(f"VERIFYING PREVIOUS NONCE LINK (Block #{prev_block.get('index')} -> Block #{block.get('index')})")
+        print(f"VERIFYING LINK BETWEEN BLOCK #{prev_block.get('index')} AND BLOCK #{block.get('index')}")
         print("-" * 80)
         
-        revealed_prev_nonce = block.get('previous_nonce')
-        expected_prev_hash = prev_block.get('nonce_hash')
+        revealed_nonce_for_prev = block.get('previous_nonce')
+        prev_data = prev_block.get('data', '')
         
-        if revealed_prev_nonce == expected_prev_hash:
-            print("  Chain Link Verification: current_block.previous_nonce MATCHES previous_block.nonce_hash! ✅")
+        # Verify prev_block.block_hash == SHA-512(prev_data + revealed_nonce_for_prev)
+        calc_prev_block_hash = compute_block_hash(prev_data, revealed_nonce_for_prev)
+        
+        if calc_prev_block_hash == prev_block.get('block_hash'):
+            print("  Chain Link & Nonce Revelation Verification: Block k's previous_nonce VALIDATES Block k-1's block_hash! ✅")
         else:
-            print("  ❌ Chain Link Verification: current_block.previous_nonce DOES NOT MATCH previous_block.nonce_hash!")
+            print("  ❌ Verification Failed: Block k's previous_nonce DOES NOT match Block k-1's block_hash commitment!")
             sys.exit(1)
 
-    print("\n✅ RESULT: BLOCK IS CRYPTOGRAPHICALLY VALID!")
+    print("\n✅ RESULT: BLOCK STRUCTURE & REVELATION VALID!")
 
 
 def cmd_parse_block(args):
@@ -354,12 +343,15 @@ def cmd_attack_sim(args):
         print(f"Error: Could not parse block from '{filepath}'.")
         sys.exit(1)
         
-    target_hash_hex = block.get("nonce_hash")
-    
+    target_hash_hex = block.get("previous_nonce")
+    if not target_hash_hex or target_hash_hex == "0x0":
+        print("Target block has no previous nonce hash.")
+        sys.exit(1)
+        
     print("=" * 80)
     print(f"OUTSIDER ATTACK SIMULATION (Targeting Block #{block.get('index', 0)})")
     print("=" * 80)
-    print(f"Target Nonce Commitment H(N_i): {target_hash_hex}")
+    print(f"Target Nonce Hash: {target_hash_hex}")
     print(f"Searching 512-bit nonce space without the secret seed...\n")
     
     start_time = time.perf_counter()

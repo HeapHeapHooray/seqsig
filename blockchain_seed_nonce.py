@@ -2,10 +2,11 @@
 Single-Hash Deterministic Blockchain Identity Scheme.
 
 Model:
-- PRNG number N_k is PRIVATE (never published).
+- PRNG number N_k is PRIVATE.
 - Single Hash: nonce_hash = SHA-512(N_k)
-- Block Hash: block_hash = SHA-512(current_data + nonce_hash)
-- In Block k, `previous_nonce` is the `nonce_hash` of Block k-1!
+- block_hash = SHA-512(current_data + nonce_hash)
+- `nonce_hash` is NOT written in Block k! It only appears in Block k+1 as `previous_nonce`.
+- Block k contains only: index, data, previous_nonce, block_hash.
 """
 
 import hashlib
@@ -40,9 +41,8 @@ def save_block_to_txt(block: dict, filepath: str):
         "================================================================================",
         f"BLOCK_INDEX        : {block['index']}",
         f"DATA               : {block['data']}",
-        f"NONCE_HASH         : {block['nonce_hash']}",
-        f"BLOCK_HASH         : {block['block_hash']}",
         f"PREVIOUS_NONCE     : {block['previous_nonce']}",
+        f"BLOCK_HASH         : {block['block_hash']}",
         f"TIME_TO_KNOW_NONCE : {block['time_to_know_nonce']}",
         "================================================================================"
     ]
@@ -66,12 +66,10 @@ def parse_block_txt(filepath: str) -> dict:
                     block["index"] = int(val)
                 elif key == "data":
                     block["data"] = val
-                elif key == "nonce_hash" or key == "nonce_hash_h_ni":
-                    block["nonce_hash"] = val
-                elif key == "block_hash":
-                    block["block_hash"] = val
                 elif key == "previous_nonce" or key == "prev_nonce":
                     block["previous_nonce"] = val
+                elif key == "block_hash":
+                    block["block_hash"] = val
                 elif key == "time_to_know_nonce":
                     block["time_to_know_nonce"] = val
     return block
