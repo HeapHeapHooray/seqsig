@@ -1,0 +1,9 @@
+{
+  "index": 1,
+  "data": "Block #1 revealing secret nonce N_0",
+  "prev_nonce": "0x6cbedcfc6b044bb9ceefe87c88e1ed53f2dc752ab497fc483b940483e72babd3b0ba204ca5aed322ca603cef882aacfaa8a912dbe098a29e2f3efacd42859fcd",
+  "prev_nonce_hash": "48347bf170fd4db8bcb64e62e940e867d6c5ebc81befc1c345a7ba2fae5916f01f0cba2bb00ced1227565816a1a1222cc19449f7feb8880eaf2c211b637f0759",
+  "nonce_hash": "5116c5da7ed5c717507d1b9c9ea3079d25a434352490a8ea0d9d3a866ad3bd60d667262d3429f996d5d3cceeb1c91e6b3f0c042866a1508503b0226c9f72d8b3",
+  "block_hash": "db5e1446e2f1d2f5e8c8faaf5108acba9d80c546f70fbeab989b348ec05ec74f6ac1ab7663edbde4a9e9caeb706f691e70e5ed06f8ddf00034992eed6faf5357",
+  "time_to_know_nonce": "26.30 \u00b5s (INSTANT)"
+}

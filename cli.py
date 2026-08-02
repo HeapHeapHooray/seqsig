@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI Tool for Ledgerless 512-Bit Secret Seed Block Minting & Nonce Verification.
+CLI Tool for Ledgerless 512-Bit Secret Seed Block Minting & Previous Nonce Revelation Verification.
 """
 
 import argparse
@@ -106,21 +106,19 @@ def load_json_input(input_arg: str = None) -> dict:
 
 def cmd_mint_block(args):
     """
-    Mint a standalone block based strictly on provided block.json input from file or stdin.
-    No ledger database or ledger state required!
+    Mint a standalone block revealing the secret nonce of the previous block 
+    and committing to the new secret nonce for the current block.
     """
     block_json_data = load_json_input(args.json_file)
     
     seed_arg = None
     data_arg = None
     block_index = 0
-    prev_hash = "0" * 128
     
     if block_json_data:
         seed_arg = block_json_data.get("seed") or block_json_data.get("secret_seed")
         data_arg = block_json_data.get("data")
         block_index = block_json_data.get("index", block_json_data.get("block_index", 0))
-        prev_hash = block_json_data.get("prev_hash", "0" * 128)
         
     if not seed_arg and getattr(args, "seed", None):
         seed_arg = args.seed
@@ -134,25 +132,39 @@ def cmd_mint_block(args):
 
     seed_val = load_seed_from_arg_or_file(seed_arg)
     
-    # Initialize PRNG engine and advance to step index
-    prng = CryptoPRNG512(seed_val)
-    for _ in range(block_index):
-        prng.next_bytes()
-        
     start_time = time.perf_counter()
-    nonce_curr = prng.next_int()
-    h_curr = sha512_int(nonce_curr)
+    prng = CryptoPRNG512(seed_val)
     
-    block_content = (prev_hash + data_arg + h_curr.hex()).encode('utf-8')
+    # Generate nonces up to current step
+    # For Block k:
+    # - Step 0..k-1 generates previous secret nonces
+    # - Step k generates current secret nonce
+    prev_nonce_hex = "0x0"
+    prev_nonce_hash_hex = "0" * 128
+    
+    if block_index > 0:
+        for _ in range(block_index - 1):
+            prng.next_bytes()
+        prev_nonce_int = prng.next_int()
+        prev_nonce_hex = hex(prev_nonce_int)
+        prev_nonce_hash_hex = sha512_int(prev_nonce_int).hex()
+    
+    # Current block nonce commitment
+    curr_nonce_int = prng.next_int()
+    curr_nonce_hash_hex = sha512_int(curr_nonce_int).hex()
+    
+    # Block hash calculation: SHA-512(prev_nonce || data || curr_nonce_hash)
+    block_content = (prev_nonce_hex + data_arg + curr_nonce_hash_hex).encode('utf-8')
     block_hash = sha512_bytes(block_content).hex()
+    
     elapsed_us = (time.perf_counter() - start_time) * 1_000_000
     
     minted_block = {
         "index": block_index,
         "data": data_arg,
-        "prev_hash": prev_hash,
-        "nonce_N_i": hex(nonce_curr),
-        "nonce_hash_H_Ni": h_curr.hex(),
+        "prev_nonce": prev_nonce_hex,            # Revealed 512-bit secret nonce from block k-1
+        "prev_nonce_hash": prev_nonce_hash_hex,  # SHA-512(prev_nonce) matching block k-1 commitment
+        "nonce_hash": curr_nonce_hash_hex,       # New commitment H(N_k) for current block k
         "block_hash": block_hash,
         "time_to_know_nonce": f"{elapsed_us:.2f} µs (INSTANT)"
     }
@@ -168,12 +180,13 @@ def cmd_mint_block(args):
             f.write("\n")
         print(f"Saved minted block JSON to: {args.out}")
     elif not args.txt_out:
-        # Default: Print JSON to stdout
         print(json.dumps(minted_block, indent=2))
 
 
 def cmd_verify_block(args):
-    """Verify integrity of a standalone block JSON or .txt file."""
+    """
+    Verify integrity of a block JSON or .txt file, or verify a block pair (Block k and Block k+1).
+    """
     filepath = args.file
     if not os.path.exists(filepath):
         print(f"Error: File '{filepath}' not found.")
@@ -186,7 +199,6 @@ def cmd_verify_block(args):
     else:
         block = parse_block_txt(filepath)
         if not block:
-            # Try parsing as JSON if filename doesn't end with .json
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     block = json.load(f)
@@ -200,27 +212,53 @@ def cmd_verify_block(args):
     print("=" * 80)
     print(f"VERIFYING STANDALONE BLOCK #{block.get('index', 0)}")
     print("=" * 80)
-    print(f"  Data               : '{block.get('data')}'")
-    print(f"  Prev Hash          : {block.get('prev_hash')[:32]}...")
-    print(f"  Nonce N_i          : {block.get('nonce_N_i')[:32]}...")
-    print(f"  Nonce Commitment   : {block.get('nonce_hash_H_Ni')[:32]}...")
-    print(f"  Block Hash         : {block.get('block_hash')[:32]}...")
+    print(f"  Data                 : '{block.get('data')}'")
+    print(f"  Revealed Prev Nonce  : {block.get('prev_nonce', '0x0')[:32]}...")
+    print(f"  Prev Nonce Hash      : {block.get('prev_nonce_hash', '0'*128)[:32]}...")
+    print(f"  Current Nonce Hash   : {block.get('nonce_hash', block.get('nonce_hash_H_Ni', ''))[:32]}...")
+    print(f"  Block Hash           : {block.get('block_hash')[:32]}...")
     
-    # 1. Verify nonce commitment H(N_i)
-    nonce_int = int(block["nonce_N_i"], 16)
-    calc_h_curr = sha512_int(nonce_int).hex()
-    if calc_h_curr != block["nonce_hash_H_Ni"]:
-        print("\n❌ RESULT: INVALID NONCE COMMITMENT! H(N_i) does not match N_i!")
-        sys.exit(1)
+    curr_nonce_hash = block.get('nonce_hash', block.get('nonce_hash_H_Ni', ''))
+    
+    # 1. If block has a revealed prev_nonce (index > 0), verify SHA512(prev_nonce) == prev_nonce_hash
+    prev_nonce_str = block.get('prev_nonce', '0x0')
+    if prev_nonce_str != '0x0':
+        prev_nonce_int = int(prev_nonce_str, 16)
+        calc_prev_hash = sha512_int(prev_nonce_int).hex()
+        if calc_prev_hash != block.get('prev_nonce_hash'):
+            print("\n❌ RESULT: INVALID PREVIOUS NONCE REVELATION! SHA-512(prev_nonce) does not match prev_nonce_hash!")
+            sys.exit(1)
+        print("  [Check 1/2] Pre-Image Verification of Previous Nonce: VALID ✅")
+    else:
+        print("  [Check 1/2] Genesis Block (no previous nonce to reveal)")
         
     # 2. Verify block hash calculation
-    block_content = (block["prev_hash"] + block["data"] + calc_h_curr).encode('utf-8')
+    block_content = (prev_nonce_str + block['data'] + curr_nonce_hash).encode('utf-8')
     calc_block_hash = sha512_bytes(block_content).hex()
-    if calc_block_hash != block["block_hash"]:
+    if calc_block_hash != block['block_hash']:
         print("\n❌ RESULT: INVALID BLOCK HASH! Content or hash was tampered with!")
         sys.exit(1)
         
+    print("  [Check 2/2] Block Hash Integrity: VALID ✅")
     print("\n✅ RESULT: BLOCK IS CRYPTOGRAPHICALLY VALID!")
+    
+    # If a second block file is provided to verify the chain link
+    if args.prev_file:
+        if not os.path.exists(args.prev_file):
+            print(f"Error: Previous block file '{args.prev_file}' not found.")
+            sys.exit(1)
+            
+        prev_block = parse_block_txt(args.prev_file) if not args.prev_file.endswith(".json") else json.load(open(args.prev_file))
+        print("\n" + "-" * 80)
+        print(f"VERIFYING CHAIN LINK BETWEEN BLOCK #{prev_block.get('index')} AND BLOCK #{block.get('index')}")
+        print("-" * 80)
+        
+        target_commitment = prev_block.get('nonce_hash', prev_block.get('nonce_hash_H_Ni'))
+        if block.get('prev_nonce_hash') == target_commitment:
+            print("  Chain Link Verification: Revealed prev_nonce MATCHES Block k-1 commitment! ✅")
+        else:
+            print("  ❌ Chain Link Verification: Revealed prev_nonce DOES NOT match Block k-1 commitment!")
+            sys.exit(1)
 
 
 def cmd_parse_block(args):
@@ -268,7 +306,7 @@ def cmd_attack_sim(args):
         print(f"Error: Could not parse block from '{filepath}'.")
         sys.exit(1)
         
-    target_hash_hex = block["nonce_hash_H_Ni"]
+    target_hash_hex = block.get("nonce_hash", block.get("nonce_hash_H_Ni"))
     
     print("=" * 80)
     print(f"OUTSIDER ATTACK SIMULATION (Targeting Block #{block.get('index', 0)})")
@@ -296,7 +334,7 @@ def cmd_attack_sim(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Ledgerless 512-Bit Secret Seed Block Minting & Nonce Verification CLI",
+        description="Ledgerless 512-Bit Secret Seed Block Minting & Nonce Revelation Verification CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -319,6 +357,7 @@ def main():
     # Command: verify
     p_verify = subparsers.add_parser("verify", help="Verify the integrity of a block file (.json or .txt)")
     p_verify.add_argument("file", help="Path to block file (.json or .txt)")
+    p_verify.add_argument("-p", "--prev-file", help="Path to previous block file to verify chain link")
     p_verify.set_defaults(func=cmd_verify_block)
     
     # Command: parse_block & parse-block
